@@ -2,18 +2,18 @@ import os
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional
-
+ 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-
-
+ 
+ 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "iot-ingestion")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "0.4.0")
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "local-dev-token")
-
-
+ 
+ 
 app = FastAPI(
     title="FIT4110 Lab 04 - IoT Ingestion Service",
     version=SERVICE_VERSION,
@@ -21,36 +21,36 @@ app = FastAPI(
         "Dockerized IoT Ingestion API aligned with the Lab 03 OpenAPI/Postman contract."
     ),
 )
-
-
+ 
+ 
 class SensorMetric(str, Enum):
     temperature = "temperature"
     humidity = "humidity"
     motion = "motion"
     smoke = "smoke"
-
-
+ 
+ 
 class SensorUnit(str, Enum):
     celsius = "celsius"
     percent = "percent"
     boolean = "boolean"
     ppm = "ppm"
-
-
+ 
+ 
 class ProblemDetails(BaseModel):
     type: str = "about:blank"
     title: str
     status: int = Field(..., ge=400, le=599)
     detail: str
     instance: Optional[str] = None
-
-
+ 
+ 
 class HealthResponse(BaseModel):
     status: str
     service: str
     version: str
-
-
+ 
+ 
 class SensorReadingCreate(BaseModel):
     device_id: str = Field(..., min_length=3, examples=["ESP32-LAB-A01"])
     metric: SensorMetric = Field(..., examples=["temperature"])
@@ -63,8 +63,8 @@ class SensorReadingCreate(BaseModel):
     )
     unit: Optional[SensorUnit] = Field(default=None, examples=["celsius"])
     timestamp: str = Field(..., examples=["2026-05-13T08:30:00+07:00"])
-
-
+ 
+ 
 class SensorReading(BaseModel):
     reading_id: str
     device_id: str
@@ -73,19 +73,19 @@ class SensorReading(BaseModel):
     unit: Optional[SensorUnit] = None
     timestamp: str
     created_at: str
-
-
+ 
+ 
 class SensorReadingCreated(BaseModel):
     reading_id: str
     device_id: str
     metric: SensorMetric
     accepted: bool
     created_at: str
-
-
+ 
+ 
 READINGS: List[Dict] = []
-
-
+ 
+ 
 def build_problem(
     *,
     status_code: int,
@@ -103,8 +103,8 @@ def build_problem(
     if instance:
         problem["instance"] = instance
     return problem
-
-
+ 
+ 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     if isinstance(exc.detail, dict):
@@ -112,25 +112,25 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     else:
         problem = build_problem(
             status_code=exc.status_code,
-            title=status.HTTP_STATUS_CODES.get(exc.status_code, "HTTP Error"),
+            title="HTTP Error",
             detail=str(exc.detail),
             instance=str(request.url.path),
         )
-
+ 
     problem.setdefault("status", exc.status_code)
-    problem.setdefault("title", status.HTTP_STATUS_CODES.get(exc.status_code, "HTTP Error"))
+    problem.setdefault("title", "HTTP Error")
     problem.setdefault("type", "about:blank")
     problem.setdefault("detail", "Request failed")
     problem.setdefault("instance", str(request.url.path))
-
+ 
     return JSONResponse(
         status_code=exc.status_code,
         content=problem,
         media_type="application/problem+json",
         headers=getattr(exc, "headers", None),
     )
-
-
+ 
+ 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
@@ -139,7 +139,7 @@ async def validation_exception_handler(
     location = ".".join(str(item) for item in first_error.get("loc", []))
     message = first_error.get("msg", "Request validation error")
     detail = f"{location}: {message}" if location else message
-
+ 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=build_problem(
@@ -151,8 +151,8 @@ async def validation_exception_handler(
         ),
         media_type="application/problem+json",
     )
-
-
+ 
+ 
 def verify_bearer_token(authorization: Optional[str] = Header(default=None)) -> None:
     if not authorization:
         raise HTTPException(
@@ -164,7 +164,7 @@ def verify_bearer_token(authorization: Optional[str] = Header(default=None)) -> 
                 problem_type="https://smart-campus.local/problems/unauthorized",
             ),
         )
-
+ 
     expected = f"Bearer {AUTH_TOKEN}"
     if authorization != expected:
         raise HTTPException(
@@ -176,17 +176,17 @@ def verify_bearer_token(authorization: Optional[str] = Header(default=None)) -> 
                 problem_type="https://smart-campus.local/problems/unauthorized",
             ),
         )
-
-
+ 
+ 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
+ 
+ 
 def next_reading_id() -> str:
     today = datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"R-{today}-{len(READINGS) + 1:04d}"
-
-
+ 
+ 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(
@@ -194,8 +194,8 @@ def health() -> HealthResponse:
         service=SERVICE_NAME,
         version=SERVICE_VERSION,
     )
-
-
+ 
+ 
 @app.post(
     "/readings",
     response_model=SensorReadingCreated,
@@ -210,10 +210,10 @@ def health() -> HealthResponse:
 def create_reading(payload: SensorReadingCreate, response: Response) -> SensorReadingCreated:
     if payload.metric == SensorMetric.temperature and payload.value >= 70:
         response.headers["X-Warning"] = "high-temperature"
-
+ 
     reading_id = next_reading_id()
     created_at = now_iso()
-
+ 
     item = {
         "reading_id": reading_id,
         "device_id": payload.device_id,
@@ -224,7 +224,7 @@ def create_reading(payload: SensorReadingCreate, response: Response) -> SensorRe
         "created_at": created_at,
     }
     READINGS.append(item)
-
+ 
     return SensorReadingCreated(
         reading_id=reading_id,
         device_id=payload.device_id,
@@ -232,27 +232,27 @@ def create_reading(payload: SensorReadingCreate, response: Response) -> SensorRe
         accepted=True,
         created_at=created_at,
     )
-
-
+ 
+ 
 @app.get("/readings/latest", dependencies=[Depends(verify_bearer_token)])
 def latest_readings(
     device_id: Optional[str] = Query(default=None),
     limit: int = Query(default=10, ge=1, le=100),
 ) -> Dict[str, List[Dict]]:
     items = READINGS
-
+ 
     if device_id:
         items = [item for item in items if item["device_id"] == device_id]
-
+ 
     return {"items": items[-limit:]}
-
-
+ 
+ 
 @app.get("/readings/{reading_id}", dependencies=[Depends(verify_bearer_token)])
 def get_reading(reading_id: str) -> Dict:
     for item in READINGS:
         if item["reading_id"] == reading_id:
             return item
-
+ 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail=build_problem(
