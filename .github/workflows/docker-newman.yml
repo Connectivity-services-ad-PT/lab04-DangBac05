@@ -14,7 +14,7 @@ jobs:
       - name: Install Node dependencies
         run: npm install
       - name: Lint OpenAPI contract
-        run: npm run lint:contracts
+        run: npm run lint:openapi
       - name: Build Docker image
         run: docker build -t fit4110/iot-ingestion:lab04 .
       - name: Run Docker container
